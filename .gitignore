@@ -1,3 +1,6 @@
+# Test Images
+/test_images/
+
 # Compiled Object files
 *.slo
 *.lo
@@ -26,3 +29,4 @@
 *.exe
 *.out
 *.app
+segment

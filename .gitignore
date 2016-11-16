@@ -8,6 +8,7 @@ data/
 *.o
 *.obj
 smocr
+ocr_test_driver
 
 # Precompiled Headers
 *.gch

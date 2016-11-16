@@ -1,11 +1,13 @@
 # Test Images
 /test_images/
+data/
 
 # Compiled Object files
 *.slo
 *.lo
 *.o
 *.obj
+smocr
 
 # Precompiled Headers
 *.gch

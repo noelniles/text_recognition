@@ -1,12 +1,64 @@
-#include "opencv2/opencv.hpp"
+#include "ocr.h"
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
-#include <tesseract/baseapi.h>
-
+#include <openssl/sha.h>
+#include <random>
 using namespace cv;
-using namespace std;
 
 
-vector<Rect> segment(const Mat& image)
+void create_log(std::string &lf, const std::string &imgfilename) {
+    time_t rawtime;
+    struct tm *utc;
+    time(&rawtime);
+    utc = gmtime(&rawtime);
+
+    char fn[80];
+    strftime(fn, 80, "%Y_%m_%d_%H_%M_%S", utc);
+
+    char date[80];
+    strftime(date, 80, "%Y/%m/%d", utc);
+
+    char time[80];
+    strftime(time, 80, "%H:%M:%S", utc);
+
+    std::string logpath = "./data/logs/"+std::string(fn);
+    std::ofstream logfile;
+    Mat img;
+    img = imread(imgfilename);
+    std::string hash = imhash(img);
+    logfile.open(logpath);
+
+    if (!logfile.is_open()) {
+        std::cout << "problem opening log file\n" << std::endl;
+    }
+    else {
+        logfile << "image_filename: " << imgfilename << '\n';
+        logfile << "run_date: " << date << '\n';
+        logfile << "run_time: " << time << "\n";
+        logfile << "hash: " << hash << "\n";
+        logfile << "region confidence result\n";
+    }
+    lf = "./data/logs/"+std::string(fn);
+    logfile.close();
+}
+
+/* Hash an image */
+std::string imhash(const Mat& img) {
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(img.data, sizeof(img) - 1, hash);
+    return std::string((char*)hash);
+}
+
+/* Record the log */
+void record(std::string &lf, std::string &record) {
+    std::ofstream logfile;
+    logfile.open(lf);
+    logfile << record << '\n';
+}
+
+
+std::vector<Rect> segment(const Mat& image)
 {
     Mat img = image;
 
@@ -27,12 +79,12 @@ vector<Rect> segment(const Mat& image)
 
     // Find contours
     Mat mask = Mat::zeros(img.size(), CV_8UC1);
-    vector<vector<Point>> contours;
-    vector<Vec4i> hierarchy;
+    std::vector<std::vector<Point>> contours;
+    std::vector<Vec4i> hierarchy;
     findContours(img, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
 
     // Filter contours
-    vector<Rect> boxes;
+    std::vector<Rect> boxes;
     for(int idx = 0; idx >= 0; idx = hierarchy[idx][0])
     {
         Rect rect = boundingRect(contours[idx]);
@@ -56,16 +108,24 @@ vector<Rect> segment(const Mat& image)
 }
 
 
-void ocr_boxes(vector<Rect> boxes, const Mat& img)
+void ocr_rois(std::vector<Rect> boxes, const Mat& img, std::string imgfilename)
 {
+    std::string logfile;
+    create_log(logfile, imgfilename);
+
     double avg_confidence = 0;
     size_t counter = 0;
+
+    std::ofstream log;
+    log.open(logfile, std::ios::app);
+
     for (auto i : boxes) {
-        cout << i.x << " " << i.y << " " << i.width << " " << i.height <<  endl;
         Mat roi = img(Rect(i.x, i.y, i.width, i.height));
         resize(roi, roi, roi.size()*4);
-        imshow("image", roi);
-        waitKey(0);
+
+        //Uncomment these to look at the cropped regions. */
+        //imshow("image", roi);
+        //waitKey(0);
         tesseract::TessBaseAPI tess;
         tess.Init(NULL, "eng", tesseract::OEM_TESSERACT_CUBE_COMBINED);
 
@@ -74,32 +134,16 @@ void ocr_boxes(vector<Rect> boxes, const Mat& img)
                       roi.size().height,
                       roi.channels(), roi.step1());
         tess.Recognize(0);
-        const char* out = tess.GetUTF8Text();
 
+        const char* out = tess.GetUTF8Text();
+        log << i.x << " " << i.y << " " << i.width << " "
+            << i.height << " " << " " << tess.MeanTextConf() << " " << out << '\n';
         // Don't count the whole image in the average.
         if (counter < boxes.size()) {
             avg_confidence += tess.MeanTextConf();
             counter++;
         }
-        printf("confidence: %d\n", tess.MeanTextConf());
-        cout << out << endl;
-        cout << "\n";
+        std::cout << out << '\n' << std::endl;
     }
-    printf("Average confidence: %5.2f\n", avg_confidence/counter);
+    log.close();
 }
-
-
-//int main(int argc, char* argv[])
-//{
-//    if (argc < 2) {
-//        perror("Usage: segment {imagename}\n");
-//        exit(-1);
-//    }
-//    else {
-//        Mat img = imread(argv[1]);
-//        vector<Rect> boxes;
-//        boxes = segment(img);
-//        ocr_boxes(boxes, img);
-//    }
-//    return 0;
-//}

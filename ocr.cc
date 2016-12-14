@@ -1,4 +1,5 @@
 #include "ocr.h"
+#include "unline.h"
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -13,20 +14,19 @@ void create_log(std::string &lf, const std::string &imgfilename) {
     time(&rawtime);
     utc = gmtime(&rawtime);
 
-    char fn[80];
-    strftime(fn, 80, "%Y_%m_%d_%H_%M_%S", utc);
-
     char date[80];
     strftime(date, 80, "%Y/%m/%d", utc);
 
     char time[80];
     strftime(time, 80, "%H:%M:%S", utc);
 
-    std::string logpath = "./data/logs/"+std::string(fn);
-    std::ofstream logfile;
+
     Mat img;
     img = imread(imgfilename);
+    std::string fn = imhash(img);
     std::string hash = imhash(img);
+    std::string logpath = "./data/logs/"+std::string(fn);
+    std::ofstream logfile;
     logfile.open(logpath);
 
     if (!logfile.is_open()) {
@@ -47,17 +47,21 @@ void create_log(std::string &lf, const std::string &imgfilename) {
 std::string imhash(const Mat& img) {
     unsigned char hash[SHA_DIGEST_LENGTH];
     SHA1(img.data, sizeof(img) - 1, hash);
-    return std::string((char*)hash);
+    std::cout << "Hash: "<< std::hex << &hash << std::endl;
+    return std::string((char*)&hash);
 }
 
 /* Record the log */
 void record(std::string &lf, std::string &record) {
     std::ofstream logfile;
     logfile.open(lf);
-    logfile << record << '\n';
+    logfile << record;
 }
 
-
+/*****************************************************************************
+ * Given an a Mat containing image data.
+ * Find regions containing text and return a vector containing bounding boxes.
+ ****************************************************************************/
 std::vector<Rect> segment(const Mat& image)
 {
     Mat img = image;
@@ -73,7 +77,7 @@ std::vector<Rect> segment(const Mat& image)
     threshold(img, img, 0.0, 255.0, THRESH_BINARY | THRESH_OTSU);
 
     // Connect horizontally oriented regions
-    morphKernel = getStructuringElement(MORPH_RECT, Size(9, 1));
+    morphKernel = getStructuringElement(MORPH_RECT, Size(17, 3));
     morphologyEx(img, img, MORPH_CLOSE, morphKernel);
     morphologyEx(img, img, MORPH_OPEN, morphKernel);
 
@@ -81,7 +85,7 @@ std::vector<Rect> segment(const Mat& image)
     Mat mask = Mat::zeros(img.size(), CV_8UC1);
     std::vector<std::vector<Point>> contours;
     std::vector<Vec4i> hierarchy;
-    findContours(img, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE, Point(0, 0));
+    findContours(img, contours, hierarchy, CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE, Point(3, 0));
 
     // Filter contours
     std::vector<Rect> boxes;
@@ -108,6 +112,11 @@ std::vector<Rect> segment(const Mat& image)
 }
 
 
+/*****************************************************************************
+ * Given a vector of bounding boxes, a Mat containing image data, and 
+ * a filename.
+ * Process each ROI using Tesseract OCR.
+ ****************************************************************************/
 void ocr_rois(std::vector<Rect> boxes, const Mat& img, std::string imgfilename)
 {
     std::string logfile;
@@ -121,7 +130,7 @@ void ocr_rois(std::vector<Rect> boxes, const Mat& img, std::string imgfilename)
 
     for (auto i : boxes) {
         Mat roi = img(Rect(i.x, i.y, i.width, i.height));
-        resize(roi, roi, roi.size()*4);
+        resize(roi, roi, roi.size()*6);
 
         //Uncomment these to look at the cropped regions. */
         //imshow("image", roi);
